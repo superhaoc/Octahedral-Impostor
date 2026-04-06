@@ -4,4 +4,4 @@ preview:
 
 reference:
 https://shaderbits.com/blog/octahedral-impostors
-https://github.com/jiangxh1992/BillboardImpostor/
+https://github.com/jiangxh1992/BillboardImpostor

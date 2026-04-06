@@ -1,0 +1,159 @@
+Shader "Impostors/OctahedralImpostor_AlbedoOnly"
+{
+    Properties
+    {
+        _MainTex ("Albedo Atlas", 2D) = "white" {}
+        _TilesPerSide ("Tiles Per Side", Float) = 32
+        _ImpostorSize ("Impostor Size", Float) = 1.0
+    }
+    SubShader
+    {
+        Cull Back
+        Tags { "RenderType"="Opaque" "RenderPipeline"="UniversalPipeline" }
+        Pass
+        {
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+
+            struct Attributes
+            {
+                float4 positionOS : POSITION;
+                float2 uv : TEXCOORD0;
+            };
+            struct Varyings
+            {
+                float4 positionCS : SV_POSITION;
+                float3 positionWS : TEXCOORD0;
+                float2 uv : TEXCOORD1;
+                float3 debugvalue : TEXCOORD2;
+            };
+
+            TEXTURE2D(_MainTex);
+            SAMPLER(sampler_MainTex);
+            float _TilesPerSide;
+            float _ImpostorSize;
+
+            // 方向转八面体UV（与烘焙互逆）
+            float2 DirToOctahedronUV(float3 vec)
+            {
+                // float3 p = dir / (abs(dir.x) + abs(dir.y) + abs(dir.z));
+                // float2 uv = p.xy;
+                // if (p.z < 0.0)
+                // {
+                //     uv = (1.0 - abs(uv.yx)) * (uv.xy >= 0.0 ? 1.0 : -1.0);
+                // }
+                // return uv * 0.5 + 0.5;
+
+                 vec.xz /= dot( 1,  abs(vec) );
+                if ( vec.y <= 0 )
+                {
+                    half2 flip = vec.xz >= 0 ? half2(1,1) : half2(-1,-1);
+                    vec.xz = (1-abs(vec.zx)) * flip;
+                }
+                return vec.xz * 0.5 + 0.5;
+            }
+
+            Varyings vert(Attributes IN)
+            {
+                Varyings OUT;
+
+                // 获取物体世界中心（假设物体pivot在中心）
+                float3 worldOrigin = TransformObjectToWorld(float3(0,0,0));
+                float3 worldCameraPos = _WorldSpaceCameraPos;
+
+                // 计算物体局部空间的视线方向（从物体中心指向相机）
+                float3 objectViewDir = TransformWorldToObjectDir(worldCameraPos - worldOrigin);
+                objectViewDir = normalize(objectViewDir);
+
+                // 构建Billboard的局部坐标系
+                float3 upVector = float3(0, 1, 0);
+                float3 rightVector = normalize(cross(objectViewDir,upVector));
+                float3 upVectorCorrect = cross(rightVector,objectViewDir);
+                float3 forwardVector = cross(rightVector,upVectorCorrect);
+                // 顶点位置（局部空间）设置为Billboard偏移，并转换到裁剪空间
+                float2 offset = (IN.uv - 0.5) * _ImpostorSize;
+                float3 newLocalPos = rightVector * offset.x + upVectorCorrect * offset.y;
+                OUT.positionCS = TransformObjectToHClip(newLocalPos);
+                // 计算实际世界位置（用于片元中视线方向计算）
+                // 注意：localPos是物体局部空间中的偏移，通过物体变换得到世界坐标
+                OUT.positionWS = worldOrigin;//TransformObjectToWorld(localPos);
+                OUT.uv = IN.uv;
+                return OUT;
+            }
+
+
+            half4 TriangleInterpolate( half2 uv )
+            {
+                uv = frac(uv);
+
+                half2 omuv = half2(1.0,1.0) - uv.xy;
+                
+                half4 res = half4(0,0,0,0);
+                //frame 0
+                res.x = min(omuv.x,omuv.y); 
+                //frame 1
+                res.y = abs( dot( uv, half2(1.0,-1.0) ) );
+                //frame 2
+                res.z = min(uv.x,uv.y); 
+                //mask
+                res.w = saturate(ceil(uv.x-uv.y));
+                
+                return res;
+            }
+
+
+            half4 frag(Varyings IN) : SV_Target
+            {
+                // 计算视线方向（世界空间）
+                float3 viewDirWS = normalize(_WorldSpaceCameraPos - IN.positionWS);
+                // 转换到物体局部空间
+                float3 viewDirOS = viewDirWS;//TransformWorldToObjectDir(viewDirWS);
+                // 烘焙时的拍摄方向是视线方向（从物体指向相机），直接使用
+                float3 captureDir = normalize(viewDirOS);
+                
+
+                // 得到八面体UV
+                float2 octUV = DirToOctahedronUV(captureDir);
+
+                // 计算 tile 索引
+                float2 scaled = octUV * _TilesPerSide;
+                float2 tileIndex = floor(scaled);
+                float2 tileUV = frac(scaled); //有问题
+                tileIndex = clamp(tileIndex, 0, _TilesPerSide - 1);
+
+             
+
+                float4 weights = TriangleInterpolate(tileUV);
+
+                half2 frame0 = tileIndex;
+                half2 frame1 = tileIndex + lerp(half2(0,1),half2(1,0),weights.w);
+                half2 frame2 = tileIndex + half2(1,1);
+
+
+                   // 使用 Quad 的 UV 作为 tile 内部 UV
+                float2 atlasUV0 = (frame0 + IN.uv) / _TilesPerSide;
+                float2 atlasUV1 = (frame1 + IN.uv) / _TilesPerSide;
+                float2 atlasUV2 = (frame2 + IN.uv) / _TilesPerSide;
+
+                
+
+                half4 color0 = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, atlasUV0);
+                half4 color1 = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, atlasUV1);
+                half4 color2 = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, atlasUV2);
+
+
+                half4 result = color0*weights.x + color1*weights.y + color2*weights.z;
+
+                //return float4(IN.uv,0,1);
+                return result;
+                //return float4(IN.uv,0,1);
+                //return float4(fwidth(octUV)*100,0,1);
+                
+
+            }
+            ENDHLSL
+        }
+    }
+}

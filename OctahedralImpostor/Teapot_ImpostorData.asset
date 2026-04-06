@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c3ecf247e6124338af813804d9db673, type: 3}
+  m_Name: Teapot_ImpostorData
+  m_EditorClassIdentifier: 
+  albedoAtlas: {fileID: 2800000, guid: 150e58cfe382543729f6bba2255af846, type: 3}
+  tilesPerSide: 32
+  tileResolution: 64
+  bounds:
+    m_Center: {x: 0, y: 0.244961, z: 0}
+    m_Extent: {x: 0.311061, y: 0.244961, z: 0.5}
